@@ -110,7 +110,7 @@ bool check_bingo(struct bingo_board *card)
     // check five rows
     for (int i = 0; i < 5; i++)
     {
-        int offset = 0;
+        //int offset = 0;
         if (card->board[i + 0] == card->board[i + 5] &&
             card->board[i + 5] == card->board[i + 10] &&
             card->board[i + 10] == card->board[i + 15] &&

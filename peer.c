@@ -254,14 +254,54 @@ struct message process_command(char *message)
             to_send.action = START_GAME;
             to_send.req = REQUEST;
             to_send.error_code = OK;
-            strcpy(to_send.data, current_token);
+            memset(peer_buffer, '\0', BUFFER_SIZE);
+            strcat(peer_buffer, current_token);
+            strcat(peer_buffer, " ");
+            strcat(peer_buffer, myName);
+            strcpy(to_send.data, peer_buffer);
             to_send.data_len = strlen(to_send.data);
 
             return to_send;
             
         }
 
-    } else if (strcmp(current_token, "help") == 0)
+    } else if (strcmp(current_token, "end") == 0)
+    {
+        current_token = get_token(NULL);
+        if (strcmp(current_token, "game") != 0)
+        {
+            printf("syntax: end game <id>\n");
+            struct message err;
+            err.action = INPUT_ERROR;
+            err.error_code = ERROR;
+            return err;
+        } else
+        {
+            current_token = get_token(NULL);;
+
+            for (int i = 0; i < strlen(current_token); i++)
+            {
+                if (!isdigit(current_token[i]))
+                {
+                    struct message a;
+                    a.action = INPUT_ERROR;
+                    a.error_code = ERROR;
+                    printf("syntax error - must enter an integer\n");
+                    return a;
+                }
+            }
+
+            struct message to_send;
+            to_send.action = END_GAME;
+            to_send.req = REQUEST;
+            to_send.error_code = OK;
+            strcpy(to_send.data, current_token);
+            to_send.data_len = strlen(to_send.data);
+
+            return to_send;
+        }
+    }
+    else if (strcmp(current_token, "help") == 0)
     {
         print_help_menu();
     }  else if (strcmp(current_token, "exit") == 0)
@@ -271,7 +311,7 @@ struct message process_command(char *message)
     }
     else
     {
-	    printf("unknown command\n");
+	    printf("here unknown command\n");
         print_help_menu();
     }
 
@@ -365,7 +405,6 @@ void *listen_on_new(void *arg)
     struct sockaddr_in echoClntAddr;
     unsigned int cliAddrLen;
     unsigned short echoServPort;
-    int recvMsgSize;
 
     char buf[BUFFER_SIZE];
 
@@ -396,8 +435,6 @@ void *listen_on_new(void *arg)
     connfd = accept(sock, (struct sockaddr *) &echoClntAddr, &cliAddrLen);
     printf("received new port connection\n");
 
-    int max = 10;
-    int count = 0;
 
     // play game
     struct bingo_board b = generate_board();
@@ -428,16 +465,20 @@ void *listen_on_new(void *arg)
             strcat(buf, "BINGO ");
             strcat(buf, name);
             n = write(connfd, buf, strlen(buf));
-            printf("bytes written: %d\n", n);
+            printf("bytes written: %ld\n", n);
             printf("error: %s\n", strerror(errno));
             break;
         }
     }
 
-    printf("SOMEONE GOT BINGO\n");
-    // TODO - notify caller of bingo
+    char *temp;
+    temp = strtok(buf, " \n");
+    temp = strtok(NULL, " \n");
+    printf("%s GOT BINGO\n", temp);
 
     close(connfd);
+
+    return (void*)(intptr_t) 1;
 
 }
 
@@ -450,11 +491,11 @@ void *listen_on_default(void *arg)
     struct sockaddr_in echoClntAddr;
     unsigned int cliAddrLen;
     unsigned short echoServPort;
-    int recvMsgSize;
 
     char buf[MAX_STRING_SIZE];
 
     echoServPort = default_port;
+    basePort = default_port + 1;
 
     if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
         DieWithError("peer server: socket() failed\n");
@@ -480,7 +521,7 @@ void *listen_on_default(void *arg)
         connfd = accept(sock, (struct sockaddr *) &echoClntAddr, &cliAddrLen);
 
         memset(buf, '\0', MAX_STRING_SIZE);
-        sprintf(buf, "%d\0", basePort);
+        sprintf(buf, "%d", basePort);
         printf("received connection\n");
 
 
@@ -498,72 +539,6 @@ void *listen_on_default(void *arg)
     }
 }
 
-void try_to_connect(int port)
-{
-    int sockfd;
-    struct sockaddr_in servaddr;
-
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    memset(&servaddr, 0, sizeof(servaddr));
-    servaddr.sin_family = AF_INET;
-    servaddr.sin_port = htons(port);
-    inet_pton(AF_INET, "127.0.0.1", &servaddr.sin_addr);
-
-    connect(sockfd, (struct sockaddr *) &servaddr, sizeof(servaddr));
-
-    char buf[MAX_STRING_SIZE];
-    memset(buf, '\0', MAX_STRING_SIZE);
-
-    strcat(buf, "get port");
-
-    write(sockfd, buf, strlen(buf));
-
-    int n;
-    char recvline[MAX_STRING_SIZE];
-
-    if ((n = read(sockfd, recvline, BUFFER_SIZE)) == 0)
-        DieWithError("read failed");
-
-    recvline[n] = '\0';
-
-    printf("result: %s\n", recvline);
-
-    int new_port = atoi(recvline);
-
-    close(sockfd);
-
-    sleep(2);
-    // make connection to new one
-    printf("HERE\n");
-
-    int new_sockfd;
-    new_sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    memset(&servaddr, 0, sizeof(servaddr));
-    servaddr.sin_family = AF_INET;
-    servaddr.sin_port = htons(new_port);
-    inet_pton(AF_INET, "127.0.0.1", &servaddr.sin_addr);
-
-
-    if (connect(new_sockfd, (struct sockaddr *) &servaddr, sizeof(servaddr)) < 0)
-        DieWithError("connection failed\n");
-    printf("HEARE\n");
-    memset(buf, '\0', MAX_STRING_SIZE);
-    strcat(buf, "HIIII");
-
-    write(new_sockfd, buf, strlen(buf));
-    printf("HEEEEE\n");
-    if ((n = read(new_sockfd, recvline, BUFFER_SIZE)) == 0)
-        DieWithError("second read failed");
-
-    recvline[n] = '\0';
-    printf("second result: %s\n", recvline);
-
-    close(new_sockfd);
-
-
-
-
-}
 
 int count_players(char *player_list)
 {
@@ -584,8 +559,8 @@ int Register(char *name, char *ip, char *port)
 	int sockfd;
 	struct sockaddr_in servaddr;
 
-	char managerIP[] = "127.0.0.1";
-    char manager_port[] = "10000";
+	extern char managerIP[];
+    extern char manager_port[];
 
     char sendline[BUFFER_SIZE], recvline[BUFFER_SIZE];
 	
@@ -623,6 +598,10 @@ int Register(char *name, char *ip, char *port)
 
     recvline[n] = '\0';
     int result = process_reply(recvline);
+    if (!result)
+    {
+        printf("Error adding player. Name already registered\n");
+    }
 
     memset(recvline, '\0', BUFFER_SIZE);
     memset(sendline, '\0', BUFFER_SIZE);
@@ -632,13 +611,60 @@ int Register(char *name, char *ip, char *port)
 
 }
 
+int DeRegister(char *name)
+{
+    int sockfd;
+    struct sockaddr_in servaddr;
+
+    extern char managerIP[];
+    extern char manager_port[];
+
+    char sendline[BUFFER_SIZE], recvline[BUFFER_SIZE];
+    ssize_t n;
+
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+    memset(&servaddr, 0, sizeof(servaddr));
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_port = htons(atoi(manager_port));
+    inet_pton(AF_INET, managerIP, &servaddr.sin_addr);
+
+    connect(sockfd, (struct sockaddr *) &servaddr, sizeof(servaddr));
+
+    memset(sendline, '\0', BUFFER_SIZE);
+    memset(recvline, '\0', BUFFER_SIZE);
+
+    strcat(sendline, "deregister ");
+    strcat(sendline, name);
+
+    struct message to_send = process_command(sendline);
+
+    if (to_send.action == INPUT_ERROR)
+        DieWithError("Deregister: input error");
+
+    struct_to_message(to_send, peer_buffer);
+
+    write(sockfd, peer_buffer, strlen(peer_buffer));
+
+    if ( (n = read(sockfd, recvline, BUFFER_SIZE)) == 0)
+        DieWithError("DeRegister: server terminated prematurely");
+
+    recvline[n] = '\0';
+    int result = process_reply(recvline);
+
+    memset(recvline, '\0', BUFFER_SIZE);
+    memset(sendline, '\0', BUFFER_SIZE);
+    memset(peer_buffer, '\0', BUFFER_SIZE);
+
+    return result;
+}
 int QueryPlayers()
 {
     int sockfd;
 	struct sockaddr_in servaddr;
 
-	char managerIP[] = "127.0.0.1";
-    char manager_port[] = "10000";
+	extern char managerIP[];
+    extern char manager_port[];
 
     char sendline[BUFFER_SIZE], recvline[BUFFER_SIZE];
 	
@@ -660,7 +686,7 @@ int QueryPlayers()
 
     struct message to_send = process_command(sendline);
     if (to_send.action == INPUT_ERROR)
-        DieWithError("Register: input error");
+        DieWithError("QueryPlayers: input error");
 
     struct_to_message(to_send, peer_buffer);
 
@@ -671,6 +697,11 @@ int QueryPlayers()
     recvline[n] = '\0';
     printf("%s\n", recvline);
     int result = process_reply(recvline);
+    if (!result)
+    {
+        printf("Num players: %d\n", 0);
+        return 0;
+    }
     int count = count_players(recvline);
     printf("Num players: %d\n", count);
 
@@ -678,7 +709,114 @@ int QueryPlayers()
 
 }
 
+int QueryGames()
+{
+    int sockfd;
+    struct sockaddr_in servaddr;
+
+    extern char managerIP[];
+    extern char manager_port[];
+
+    char sendline[BUFFER_SIZE], recvline[BUFFER_SIZE];
+
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+    memset(&servaddr, 0, sizeof(servaddr));
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_port = htons(atoi(manager_port));
+    inet_pton(AF_INET, managerIP, &servaddr.sin_addr);
+
+    connect(sockfd, (struct sockaddr *) &servaddr, sizeof(servaddr));
+
+    memset(sendline, '\0', BUFFER_SIZE);
+    memset(recvline, '\0', BUFFER_SIZE);
+    ssize_t n;
+
+    strcat(sendline, "query games");
+    
+    struct message to_send = process_command(sendline);
+    if (to_send.action == INPUT_ERROR)
+        DieWithError("QueryGames: input error");
+    
+    struct_to_message(to_send, peer_buffer);
+
+    write(sockfd, peer_buffer, strlen(peer_buffer));
+
+    if ( (n = read(sockfd, recvline, BUFFER_SIZE)) == 0)
+        DieWithError("QueryGames: server terminated prematurely");
+    recvline[n] = '\0';
+    printf("%s\n", recvline);
+    int result = process_reply(recvline);
+    
+    if (!result)
+        return 0;
+    else 
+        return 1;
+}
 int StartGameWithManager(int num_players)
+{
+    extern char managerIP[];
+    extern char manager_port[];
+    extern char name[];
+    extern char myName[];
+
+    int sockfd;
+    struct sockaddr_in servaddr;
+
+    char sendline[BUFFER_SIZE], recvline[BUFFER_SIZE];
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+
+    memset(&servaddr, 0, sizeof(servaddr));
+
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_port = htons(atoi(manager_port));
+    inet_pton(AF_INET, managerIP, &servaddr.sin_addr);
+
+    connect(sockfd, (struct sockaddr *) &servaddr, sizeof(servaddr));
+
+    memset(sendline, '\0', BUFFER_SIZE);
+    memset(recvline, '\0', BUFFER_SIZE);
+    ssize_t n;
+    
+    char temp[10];
+    sprintf(temp, "%d", num_players);
+    strcat(sendline, "start game ");
+    strcat(sendline, temp);
+    memset(name, '\0', NAME_MAX);
+    sprintf(name, "%s", myName);
+    strcat(sendline, " ");
+    strcat(sendline, name);
+
+    struct message to_send = process_command(sendline);
+    if (to_send.action == INPUT_ERROR)
+        DieWithError("StartGameWithManager: input error");
+    
+    struct_to_message(to_send, peer_buffer);
+
+    write(sockfd, peer_buffer, strlen(peer_buffer));
+
+    if ( (n = read(sockfd, recvline, BUFFER_SIZE)) == 0)
+        DieWithError("StartGameWithManager: read error");
+
+    recvline[n] = '\0';
+
+    struct message result = message_to_struct(recvline);
+
+    if (result.error_code != OK)
+        return 0;
+
+
+    
+    printf("StartGameWithManager: buffer - %s\n", recvline);
+
+
+    int x = save_game_info(recvline);
+    printf("Exiting StartGameWithManager\n");
+
+    return x;
+}
+
+int EndGameWithManager(int id)
 {
     extern char managerIP[];
     extern char manager_port[];
@@ -700,44 +838,57 @@ int StartGameWithManager(int num_players)
     memset(sendline, '\0', BUFFER_SIZE);
     memset(recvline, '\0', BUFFER_SIZE);
     ssize_t n;
-    
+
     char temp[10];
-    sprintf(temp, "%d\0", num_players);
-    strcat(sendline, "start game ");
+    sprintf(temp, "%d\n", id);
+    strcat(sendline, "end game ");
     strcat(sendline, temp);
+
+    printf("sendline: %s\n", sendline);
 
     struct message to_send = process_command(sendline);
     if (to_send.action == INPUT_ERROR)
-        DieWithError("StartGameWithManager: input error");
-    
+        DieWithError("EndGameWithManager: input error");
+
     struct_to_message(to_send, peer_buffer);
 
     write(sockfd, peer_buffer, strlen(peer_buffer));
 
     if ( (n = read(sockfd, recvline, BUFFER_SIZE)) == 0)
-        DieWithError("StartGameWithManager: read error");
+        DieWithError("EndGameWithManager: read error");
 
     recvline[n] = '\0';
-    printf("StartGameWithManager: buffer - %s\n", recvline);
 
+    struct message result = message_to_struct(recvline);
 
-    save_game_info(recvline);
-    printf("Exiting StartGameWithManager\n");
-
-    return 1;
+    if (result.error_code != OK)
+    {
+        return 0;
+    }
+    else
+    {
+        return 1;
+    }
 }
 
-void save_game_info(char *info)
+int save_game_info(char *info)
 {
     extern struct game current_game;
     char *temp;
     int player_index = 0;
+    int id; 
 
-    temp = strtok(info, " \n"); // 2|2|A|Game: 
+    temp = strtok(info, " \n"); // 2|2|A|ID 
     printf("After first: %s\n", temp);
+    if (temp[4] == FAILURE)
+    {
+        printf("Game failed to start. \n");
+        return 0;
+    }
     temp = strtok(NULL, " \n"); // game identifier
     printf("After second: %s\n", temp);
     current_game.id = atoi(temp);
+    id = current_game.id;
 
     memset(current_game.players, '\0', sizeof(struct player) * MAX_PLAYERS);
 
@@ -760,6 +911,7 @@ void save_game_info(char *info)
     }
 
     current_game.k = player_index;
+    return id;
 }
 
 /* 
@@ -779,7 +931,7 @@ void TearDownBingo()
 void InitiateTCPConnections()
 {
     extern struct game current_game;
-    extern char player_buffers[][BUFFER_SIZE];
+    // extern char player_buffers[][BUFFER_SIZE];
     extern int player_socks[];
     int temp_socket;
     ssize_t n;
@@ -864,9 +1016,10 @@ void SendBingo(char *winner)
     extern int player_socks[];
     char send_buffer[32];
 
-    int current_call = call(bingo_bag);
+    // int current_call = call(bingo_bag);
     memset(send_buffer, '\0', 32);
-    strcpy(send_buffer, "BINGO");
+    strcpy(send_buffer, "BINGO ");
+    strcat(send_buffer, winner);
 
     for (int i = 0; i < current_game.k; i++)
     {
@@ -883,7 +1036,7 @@ bool CheckWinner()
     // else, return false
     printf("CheckWinner entered\n");
     extern int player_socks[];
-    extern struct pollfd udfs[];
+    extern struct pollfd ufds[];
     extern struct game current_game;
 
     char buffer[BUFFER_SIZE];
@@ -893,7 +1046,8 @@ bool CheckWinner()
 
     int rv;
 
-    rv = poll(ufds, current_game.k, 100);
+    // DOUBLE CHECK, there might be an error here because the udfs was misspelled
+    rv = poll(ufds, current_game.k, 1000);
 
     if (rv == -1)
     {
@@ -939,35 +1093,27 @@ bool CheckWinner()
             return false;
         else 
         {   
+            printf("Person who won is: %s\n", temp);
             SendBingo(temp); 
             return true;
         }
 
     }
+
+// this could be an error
+    return true;
 }
 
 void *Caller(void *arg)
 {
     printf("Bingo called\n");
-    // query players and save result
-    // convert string of players to individual players
-    // create TCP connections to all of them
-    // start the bingo game
-    // start sending calls, and listening for responses
-    // if you get a response, send the event to all peers, close the connections
-    // return
-
-
-    // TODO the manager needs to check the client's identity, so that it doesn't 
-    // give the same players back. 
-
     int num_players;
 
     num_players = QueryPlayers();
 
     while (num_players < 2)
     {
-        sleep(2);
+        sleep(1);
         num_players = QueryPlayers();
         printf("num_players = %d\n", num_players);
     }
@@ -992,150 +1138,302 @@ void *Caller(void *arg)
     TearDownBingo();
     CloseTCPConnections();
 
-    // get new ports
-    // start new connections
-
-
-
-
-
-
-
-
-
-
-
-    // int defaultSocket, newSocket, managerSocket;
-	// struct sockaddr_in servaddr;
-
-    // char sendline[BUFFER_SIZE], recvline[BUFFER_SIZE], game_info[BUFFER_SIZE];
-
-    // extern char managerIP[];
-    // extern char manager_port[];
-
-
-    // ssize_t n;
-
-    // managerSocket = socket(AF_INET, SOCK_STREAM, 0);
-
-    // memset(&servaddr, 0, sizeof(servaddr));
-    // servaddr.sin_family = AF_INET;
-    // servaddr.sin_port = htons(atoi(manager_port));
-    // inet_pton(AF_INET, managerIP, &servaddr.sin_addr);
-
-
-    // // TODO - add a way to get different amounts of players in each game
-    // // Start game
-
-
-    // managerSocket = socket(AF_INET, SOCK_STREAM, 0);
-
-    // int managerConnfd = connect(managerSocket, (struct sockaddr *) &servaddr, sizeof(servaddr));
-    // if (managerConnfd != 0)
-    //     DieWithError("CallBingo");
-
-    
-    // sleep(1);
-    
-    // memset(sendline, '\0', BUFFER_SIZE);
-    // memset(recvline, '\0', BUFFER_SIZE);
-
-    // strcat(sendline, "start game 2");
-    // struct message to_send = process_command(sendline);
-
-    // if (to_send.action == INPUT_ERROR)
-    //     DieWithError("Register: input error");
-
-    // struct_to_message(to_send, peer_buffer);
-
-    // write(managerConnfd, peer_buffer, strlen(peer_buffer));
-    // memset(recvline, 0, BUFFER_SIZE);
-
-    // if ( (n = read(managerConnfd, recvline, BUFFER_SIZE)) == 0)
-    //     DieWithError("Register: server terminated prematurely");
-
-    // printf("%s\n", recvline);
-    // // TODO: Start here. It looks like up to here we are good or almost good. 
-    // // receive line is just showing what we sent? so the manager is just repeating it back? 
-    // // either way, it's not correct
-
-    // int process_reply_result = process_reply(recvline);
-
-    // printf("Game info: %s\n", game_info);
-
-
-
-
-    // // Below here is where we connect to the peer
-	
-	// defaultSocket = socket(AF_INET, SOCK_STREAM, 0);
-
-    // memset(&servaddr, 0, sizeof(servaddr));
-	// // bzero(&servaddr, sizeof(servaddr));
-	// servaddr.sin_family = AF_INET;
-	// servaddr.sin_port = htons(atoi(manager_port));
-	// inet_pton(AF_INET, managerIP, &servaddr.sin_addr);
-
-	// int result = connect(defaultSocket, (struct sockaddr *) &servaddr, sizeof(servaddr));
-
-    // if (result == 0)
-    //     printf("The connection worked!\n");
-
-    // // read from socket to get the new port number
-    // if ( (n=read(defaultSocket, recvline, BUFFER_SIZE)) == 0)
-    //     DieWithError("CallBingo 1 - server terminated early\n");
-
-    // recvline[n] = '\0';
-
-    // int newPort = atoi(recvline);
-
-    // printf("newport: %d\n|", newPort);
-
-    // close(defaultSocket);
-
-    // newSocket = socket(AF_INET, SOCK_STREAM, 0);
-    // memset(&servaddr, 0, sizeof(servaddr));
-    // servaddr.sin_family = AF_INET;
-    // servaddr.sin_port = htons(newPort);
-    // inet_pton(AF_INET, managerIP, &servaddr.sin_addr);
-
-    // int newPortResult = connect(newSocket, (struct sockaddr *) &servaddr, sizeof(servaddr));
-
-    // if (newPortResult == 0)
-    //     printf("The new port connection worked!\n");
-    // else
-    //     printf("It failed\n");
-
-
-    // struct bag *bingo_bag;
-    // bingo_bag = bingo_bag_init();
-
-    // // make calls every second and send to players
-    // int current_call;
-    // while (1)
-    // {
-    //     current_call = call(bingo_bag);
-    //     memset(sendline, 0, BUFFER_SIZE);
-    //     sprintf(sendline, "%d", current_call);
-    //     if (write(newSocket, sendline, strlen(sendline)) <= 0)
-    //         break;
-    //     sleep(1);
-    //     // TODO - need to poll each socket, and check if they have a bingo
-    //     // if they do, send out a new response saying that there was a bingo
-    //     // print the winner, then close all connections. 
-    // }
-
-    // bag_deinit(bingo_bag);
-    
-
-    // int bytes_written = write(newSocket, managerIP, strlen(managerIP));
-
-    // printf("bytes written: %d|\n", bytes_written);
-
-    // close(newSocket);
+    return (void*)(intptr_t) 1;
 }
 
-#ifndef TEST
+bool verifyIP(char *ip)
+{
+    char copy[IP_SIZE];
+    char *temp;
+    strcpy(copy, ip);
+
+
+    for (int count = 0; count < 4; count++)
+    {
+        if (count == 0)
+        {
+            temp = strtok(copy, ".\n");
+        } else 
+        {
+            temp = strtok(NULL, ".\n");
+        }
+
+        
+        for (int i = 0; i < strlen(temp); i++)
+            if (!isdigit(temp[i]))
+                return false;
+
+        if (!(atoi(temp) >= 0 && atoi(temp) < 256))
+            return false;
+
+    }
+
+    if (strlen(ip) > IP_SIZE && ip[IP_SIZE-1] != '\0')
+        return false;
+
+
+    return true;
+    
+    
+}
+
+bool verifyPort(char *port)
+{
+    for (int i = 0; i < strlen(port); i++)
+    {
+        if (!(isdigit(port[i]) || port[i] == '\0' || port[i] == '\n'))
+            return false;
+    }
+    if (atoi(port) < 20000 || atoi(port) > 20999)
+        return false;
+
+    return true;
+}
+
+#ifdef FINAL
+int main(int argc, char **argv)
+{
+    extern char name[];
+    extern char IP[];
+    extern char port[];
+    extern int basePort;
+    extern char managerIP[];
+    extern char manager_port[];
+
+    extern char myName[];
+    extern bool myNameSet;
+    myNameSet = false;
+
+    pthread_t listening_thread;
+    pthread_t bingo_thread;
+
+    char main_buffer[BUFFER_SIZE], *temp;
+
+    memset(name, '\0', NAME_MAX);
+    memset(IP, '\0', IP_SIZE);
+    memset(port, '\0', MAX_PORT_LEN);
+
+    int looping = 1;
+
+    if (argc < 3)
+    {
+        printf("usage: ./peer <managerIP> <managerPort>\n");
+        exit(0);
+    } else
+    {
+        strcpy(managerIP, argv[1]);
+        strcpy(manager_port, argv[2]);
+        if (!verifyIP(managerIP))
+        {
+            printf("IP verify failed\n");
+            printf("usage ./peer <managerIP> <managerPort>\n");
+            exit(0);
+        }
+
+        if (!verifyPort(manager_port))
+        {
+            printf("port %s", manager_port);
+            printf("port verify failed\n");
+            printf("ports must be within 20000-20999\n");
+            printf("usage ./peer <managerIP> <managerPort>\n");
+            exit(0);
+        }
+    }
+
+    while (looping)
+    {
+        memset(main_buffer, '\0', BUFFER_SIZE);
+        if (fgets(main_buffer, BUFFER_SIZE, stdin) == NULL)
+        {
+            printf("main: fgets error\n");
+        }
+        else
+        {
+            if (main_buffer[0] == '\n')
+            {
+                continue;
+            }
+            
+            //printf("main buffer: %s\n", main_buffer);
+            temp = strtok(main_buffer, " ");
+            
+            if (strcmp(temp, "register") == 0)
+            {
+                printf("Register\n");
+
+                if (myNameSet)
+                {
+                    printf("you are already registered. Please unregister before registering again. \n");
+                    continue;
+                }
+                temp = strtok(NULL, " ");
+
+                if (temp)
+                {
+                    strcpy(name, temp);
+                    printf("a\n");
+                }
+                else
+                {
+                    printf("a usage: register <name> <ip address> <port> \n");
+                    continue;
+                }
+
+                temp = strtok(NULL, " ");
+                if (temp)
+                {
+                    strcpy(IP, temp);
+                    printf("b\n");
+                }
+                else
+                {
+                    printf("b usage: register <name> <ip address> <port> \n");
+                    continue;
+                }
+                
+                temp = strtok(NULL, " \n");
+                if (temp)
+                {
+                    strcpy(port, temp);
+                    printf("c\n");
+                }
+                else
+                {
+                    printf("name: %s\nip: %s\ntemp: %s", name, IP, temp);
+                    printf("usage: register <name> <ip address> <port> \n");
+                    continue;
+                }
+
+                if (!verifyIP(IP))
+                {
+                    printf("Error - IP address out of range\n");
+                    printf("usage: register <name> <ip address> <port> \n");
+                    continue;
+
+                }
+
+                if (!verifyPort(port))
+                {
+                    printf("Error - port not correct\n");
+                    printf("usage: register <name> <ip address> <port> \n");
+                    continue;
+                }
+
+                // Register
+                if (Register(name, IP, port))
+                {
+                    pthread_create(&listening_thread, NULL, *listen_on_default, (void*)(intptr_t) atoi(port));
+                    if (pthread_detach(listening_thread))
+                        DieWithError("failed to detach thread");
+
+                    printf("Listening on default port. \n");
+                    strcpy(myName, name);
+                    myNameSet = true;
+                }
+            } else if (strcmp(temp, "query") == 0)
+            {
+                printf("Query\n");
+                temp = strtok(NULL, " \n");
+                if (strcmp(temp, "players") == 0)
+                {
+                    QueryPlayers();
+                } else if (strcmp(temp, "games") == 0)
+                {
+                    QueryGames();
+                } else 
+                {
+                    printf("Input error\n");
+                    printf("Usage: query <players | games>\n");
+                }
+            } else if (strcmp(temp, "start") == 0)
+            {
+                printf("Start\n");
+                temp = strtok(NULL, " \n");
+                if (strcmp(temp, "game") != 0)
+                {
+                    printf("Usage: start game <k>\n");
+                    continue;
+                }
+                temp = strtok(NULL, " \n");
+
+                for (int i = 0; i < strlen(temp); i++)
+                {
+                    if (!(isdigit(temp[i])))
+                    {
+                        printf("usage: start game <k>\n");
+                        continue;
+                    }
+                }
+
+                int k = atoi(temp);
+                int id;
+                if ((id = StartGameWithManager(k)))
+                {
+                    printf("Game successfully started\n");
+                    pthread_create(&bingo_thread, NULL, &Caller, (void*) (intptr_t)k);
+                    pthread_join(bingo_thread, NULL);
+                    // TODO Deregister game
+                    EndGameWithManager(id);
+                }
+                else
+                    printf("Error starting game. Please try again. \n");
+                
+            } else if (strcmp(temp, "end") == 0)
+            {
+                printf("End\n");
+                temp = strtok(NULL, " \n");
+                if (strcmp(temp, "game") == 0)
+                {
+                    temp = strtok(NULL, " \n");
+                    int id = atoi(temp);
+                    if (EndGameWithManager(id))
+                    {
+                        printf("Game successfully ended.\n");
+                        continue;
+                    } else
+                    {
+                        printf("Error ending game.\n");
+                        continue;
+                    }
+                } else
+                {
+                    printf("usage: end game <k>\n");
+                    continue;
+                }
+            } else if (strcmp(temp, "deregister") == 0)
+            {
+                printf("Deregister\n");
+                temp = strtok(NULL, " \n");
+
+                if (temp)
+                {
+                    strcpy(name, temp);
+                    printf("z\n");
+                } else
+                {
+                    printf("usage: deregister <name>\n");
+                    continue;
+                }
+
+                if (DeRegister(temp))
+                {
+                    printf("Successfully deregistered user %s\n", temp);
+                    myNameSet = false;
+                }
+            } else if (strcmp(temp, "exit\n") == 0)
+            {
+                exit(0);
+            } else
+            {
+                printf("unknown command\n");
+                print_help_menu();
+            }
+        }
+    }
+}
+#endif
+
+#ifdef TEST2
 int
 main(int argc, char **argv)
 {

@@ -7,9 +7,9 @@ ifeq ($(UNAME_S),Darwin)
 	CC=gcc-8
 endif
 
-CFLAGS=--std=c99
+CFLAGS=--std=c99 -Wall -Werror
 
-all: main p2p
+all: p2p
 
 main: main.o bingo.o random_bag.o
 	$(CC) $(CFLAGS) -o main main.o bingo.o random_bag.o -lpthread

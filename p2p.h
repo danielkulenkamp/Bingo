@@ -8,7 +8,7 @@
 #include	<sys/types.h>
 #include	<string.h>
 #include	<unistd.h>
-#include <ctype.h>
+#include    <ctype.h>
 
 #define	ECHOMAX	255		/* Longest string to echo */
 #define BACKLOG	128
@@ -30,22 +30,22 @@
 #define REQUEST '0'
 #define REPLY '1'
 
+#define OK 'A'
+#define ERROR 'B'
+#define FAILURE 'C'
+
 #define NAME_MAX 32
 #define IP_SIZE 16
 #define MAX_PORT_LEN 10
 #define MAX_STRING_SIZE 64
 #define BUFFER_SIZE 512
 
-#define OK 'A'
-#define ERROR 'B'
-#define FAILURE 'C'
-
-#define MAX_PLAYERS 32
-#define MAX_GAMES 32
+#define MAX_PLAYERS 8
+#define MAX_GAMES 8
 #define MIN_PLAYERS 2
 
 
-// #define DEBUG
+#define DEBUG
 
 struct message {
     char action;
